@@ -1,0 +1,7 @@
+# Arquivos gerados
+gamebuild/
+ci-out/
+gamedata/
+target/
+*.class
+*.log
