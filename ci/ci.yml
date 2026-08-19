@@ -1,0 +1,29 @@
+# Workflow de CI do Porto Aurora.
+# O bot de entrega não tem permissão para criar .github/workflows/,
+# então copie este arquivo para .github/workflows/ci.yml para ativar:
+#   mkdir -p .github/workflows && cp ci/ci.yml .github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['ci-out/**', 'docs/**', 'README.md']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compilar
+        run: |
+          mkdir -p ci-out
+          find src/main/java -name '*.java' > ci-out/sources.txt
+          javac -encoding UTF-8 -d ci-out/classes @ci-out/sources.txt
+          echo "Arquivos java: $(wc -l < ci-out/sources.txt)"
+      - name: Selftest
+        run: java -cp ci-out/classes ohkt.Main --selftest
+      - name: Smoke + screenshots
+        run: java -Djava.awt.headless=true -cp ci-out/classes ohkt.Main --shot ci-out 42

@@ -1,221 +1,119 @@
-🛠️ Passo a Passo de Instalação e Configuração
-Passo 1: Habilitar API Services no Roblox Studio
-Para que o sistema de banimento permanente e persistência de kicks funcione, você precisa ativar o banco de dados do seu jogo:
- * Abra o seu jogo no Roblox Studio.
- * Vá até a aba Home e clique em Game Settings (Configurações do Jogo).
- * Acesse a seção Security (Segurança).
- * Ative a opção Enable API Services (Habilitar Serviços de API / DataStore).
- * Clique em Save (Salvar).
-Passo 2: Criar o Script do Servidor
- * No painel Explorer, navegue até ServerScriptService.
- * Adicione um novo Script (normal, não LocalScript) e renomeie para AntiCheatManager.
- * Cole o seguinte código:
--- ===============================================================
--- ANTI-CHEAT E GERENCIADOR DE MODERAÇÃO (SERVER-SIDE)
--- Localização: ServerScriptService -> AntiCheatManager
--- ===============================================================
+# PORTO AURORA — jogo 3D de mundo aberto em Java puro
 
-local Players = game:GetService("Players")
-local DataStoreService = game:GetService("DataStoreService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+Jogo de ação urbana inspirado na estrutura e escala dos grandes jogos de mundo aberto,
+implementado **100% em Java, sem nenhuma dependência externa**: engine própria
+(game loop, cenas, física, streaming), **renderizador 3D por software** (rasterização
+com z-buffer, iluminação, neblina, sombras, partículas), **áudio 100% sintetizado**
+(motor, armas, sirenes, chuva e rádio com 4 estações de música procedural).
 
--- Banco de dados para persistência de punições
-local BanDataStore = DataStoreService:GetDataStore("SecurityPunishments_v1")
+## Como executar
 
--- Evento de comunicação seguro com o cliente
-local SecurityEvent = ReplicatedStorage:FindFirstChild("SecurityEvent")
-if not SecurityEvent then
-    SecurityEvent = Instance.new("RemoteEvent")
-    SecurityEvent.Name = "SecurityEvent"
-    SecurityEvent.Parent = ReplicatedStorage
-end
+Requisito: **JDK 17+** (testado com Temurin 17).
 
--- Limites físicos permitidos
-local MAX_WALKSPEED = 25
-local MAX_JUMPHEIGHT = 60
+```bash
+# Linux/macOS
+./run.sh
 
--- Lista de Administradores Oficiais (Adicione seu UserId aqui)
-local ServerAdmins = {
-    [12345678] = true, -- Substitua 12345678 pelo seu UserId do Roblox
-}
+# Windows
+run.bat
+```
 
-local function getPlayerData(player)
-    local key = "Player_" .. player.UserId
-    local success, result = pcall(function()
-        return BanDataStore:GetAsync(key)
-    end)
-    
-    if success and result then
-        return result
-    else
-        return { KickCount = 0, IsBanned = false }
-    end
-end
+Ou com Maven (também sem dependências):
 
-local function savePlayerData(player, data)
-    local key = "Player_" .. player.UserId
-    pcall(function()
-        BanDataStore:SetAsync(key, data)
-    end)
-end
+```bash
+mvn -q compile exec:java
+```
 
-local function applyPunishment(player, reason)
-    local data = getPlayerData(player)
-    data.KickCount = (data.KickCount or 0) + 1
+Modos auxiliares:
 
-    if data.KickCount >= 4 then
-        data.IsBanned = true
-        savePlayerData(player, data)
-        
-        SecurityEvent:FireClient(player, "WarnAndBan", "Você foi BANIDO PERMANENTEMENTE por tentativas repetidas de bypass.")
-        task.wait(1)
-        player:Kick("BANIDO PERMANENTEMENTE: Você atingiu o limite máximo de 4 infrações de segurança.")
-    else
-        savePlayerData(player, data)
-        
-        local warningMsg = string.format("Infração de segurança (%d/3 avisos). Alterar o ambiente do jogo é proibido.", data.KickCount)
-        SecurityEvent:FireClient(player, "WarnAndKick", warningMsg)
-        task.wait(1)
-        player:Kick(string.format("Segurança: %s (Aviso %d/3)", reason, data.KickCount))
-    end
-end
+```bash
+java -cp gamebuild ohkt.Main --selftest   # bateria de testes automatizados
+java -cp gamebuild ohkt.Main --shot pasta 42  # 42s de jogo simulado + screenshots
+```
 
--- Checagem no momento da entrada
-Players.PlayerAdded:Connect(function(player)
-    local data = getPlayerData(player)
-    
-    if data.IsBanned then
-        player:Kick("Sua conta está banida permanentemente deste jogo por violação de segurança.")
-        return
-    end
+![cidade de dia](docs/screenshots/01_cidade_dia.png)
+![dirigindo](docs/screenshots/02_dirigindo.png)
+![noite com polícia](docs/screenshots/03_noite_policia.png)
 
-    player.CharacterAdded:Connect(function(character)
-        local humanoid = character:WaitForChild("Humanoid")
+## A cidade
 
-        task.spawn(function()
-            while character and character.Parent do
-                task.wait(1)
-                if humanoid then
-                    if humanoid.WalkSpeed > MAX_WALKSPEED then
-                        applyPunishment(player, "Velocidade alterada anormalmente (SpeedHack)")
-                        break
-                    end
-                    if humanoid.JumpHeight > MAX_JUMPHEIGHT or humanoid.JumpPower > 100 then
-                        applyPunishment(player, "Força de pulo alterada anormalmente (HighJump)")
-                        break
-                    end
-                end
-            end
-        end)
-    end)
-end)
+Porto Aurora tem **676 quadras** (~1,1 km²) com 8 bairros — Centro Financeiro,
+Zona Comercial, Jardim das Acácias, Vila do Metal, Cais do Porto, Parque Aurora,
+Periferia e Zona Mista — além de praia, mar navegável, calçadão e a **Ilha do Farol**.
+Tudo é gerado deterministicamente por seed e transmitido por **streaming de chunks**
+(sem telas de carga).
 
--- Denúncias e notificações vindas do cliente
-SecurityEvent.OnServerEvent:Connect(function(player, action, reason)
-    if action == "ReportTamper" then
-        applyPunishment(player, reason or "Modificação não autorizada detectada")
-    end
-end)
+## Sistemas implementados
 
-Passo 3: Criar o LocalScript do Cliente
- * No painel Explorer, navegue até StarterPlayer \rightarrow StarterPlayerScripts.
- * Adicione um novo LocalScript e renomeie para ClientMonitor.
- * Cole o seguinte código:
--- ===============================================================
--- MONITOR E NOTIFICADOR DE SEGURANÇA (CLIENT-SIDE)
--- Localização: StarterPlayer -> StarterPlayerScripts -> ClientMonitor
--- ===============================================================
+| Sistema | Destaques |
+| --- | --- |
+| Engine | loop com passo fixo 60Hz, gerenciador de cenas, event bus, pooling |
+| Render | rasterizador software, frustum culling, LOD, névoa, dia/noite, chuva |
+| Player | andar/correr/pular/agachar/nadar, mira, respawn, morte, prisão |
+| Veículos | 9 modelos fictícios, aceleração/freio/direção/derrapagem, marchas, combustível, dano, explosão, luzes, buzina, rádio |
+| NPCs | pedestres com rotinas por horário, conversas, pânico, denúncias, motoristas com semáforos, criminosos noturnos |
+| Polícia | 5 estrelas de procurado, viaturas, policiais a pé, bloqueios, helicóptero com holofote, prisão |
+| Combate | 7 armas fictícias (GP-9, Tufão .44, Vespa K, Bruta-12, Condor AR…), headshot, recuo, recarga, tracer, explosões |
+| Missões | campanha de 10 missões com cutscenes/diálogos + táxi, corridas, entregas, recompensas, caçada e eventos aleatórios |
+| Economia | dinheiro persistente, 8 tipos de loja, concessionária, oficina (pintura/motor/pneus), 3 propriedades com renda |
+| Interiores | lojas, hospital, delegacia e casas seguras entram sem tela de carga |
+| Mundo | ciclo dia/noite com janelas acesas e postes, clima (chuva/tempestade/neblina) que afeta aderência e visibilidade |
+| Save | 3 slots + autosave (posição, armas, veículos, missões, propriedades, stats) |
+| Rede | servidor HTTP local opcional com estatísticas ao vivo (`/status`) |
+| Entrada | teclado + mouse com teclas configuráveis + gamepad Linux (`/dev/input/js*`) |
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
+## Controles (padrão)
 
-local LocalPlayer = Players.LocalPlayer
-local SecurityEvent = ReplicatedStorage:WaitForChild("SecurityEvent", 10)
+| Ação | Tecla |
+| --- | --- |
+| Mover | `W A S D` |
+| Correr / Pular / Agachar | `Shift` / `Espaço` / `Ctrl` |
+| Interagir / Entrar-sair veículo | `E` / `F` |
+| Atirar / Mirar | `Mouse Esq.` / `Mouse Dir.` |
+| Recarregar / Trocar arma | `R` / `Scroll` ou `1-7` |
+| Freio de mão | `Espaço` (no veículo) |
+| Buzina / Faróis / Rádio | `H` / `L` / `B` |
+| Câmera 1ª/3ª pessoa | `C` |
+| Mapa grande | `M` |
+| Pausa | `Esc` |
+| Debug | `F3` |
 
-local function showNotification(title, text)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = title,
-            Text = text,
-            Duration = 5
-        })
-    end)
-end
+Gamepad: analógico esquerdo move, direito controla câmera, `RT` atira,
+`A` interage, `Y` entra/sai, `B` buzina, `X` recarrega, `Start` pausa.
 
-if SecurityEvent then
-    SecurityEvent.OnClientEvent:Connect(function(actionType, message)
-        if actionType == "WarnAndKick" then
-            showNotification("⚠️ AVISO DE SEGURANÇA", message)
-        elseif actionType == "WarnAndBan" then
-            showNotification("🚫 BANIMENTO PERMANENTE", message)
-        end
-    end)
-end
+## Arquitetura
 
-local function monitorCharacter(character)
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    if not humanoid then return end
+```
+src/main/java/ohkt/
+├── Main.java            ponto de entrada (--selftest/--shot/--play)
+├── engine/     loop, cenas, janela, input (teclado/mouse/gamepad), settings, eventos
+├── graphics/   renderer 3D software, meshes, câmera, frustum, partículas
+├── physics/    colisores estáticos em spatial-hash, raycast, resolução de círculo
+├── world/      cidade determinística, chunks/streaming, ruas/semaforos, tempo, clima, interiores
+├── player/     personagem, câmeras, roupas
+├── vehicle/    catálogo, física de veículos, pool/estacionamento
+├── npc/        pedestres/motoristas/criminosos com IA de estados e rotinas
+├── police/     procurado, dispatcher, perseguição, bloqueios, helicóptero
+├── combat/     armas, balística raycast, melee, explosões, pickups
+├── mission/    campanha, objetivos, cutscenes, atividades, eventos aleatórios
+├── economy/    dinheiro, lojas, propriedades
+├── audio/      mixer 3D, síntese de efeitos, rádio procedural
+├── ui/         HUD (minimapa, wanted, velocímetro) e menus completos
+├── save/       slots de save reais em disco + estatísticas
+├── network/    servidor HTTP local de estatísticas
+└── tools/      selftest e smoke script (validação contínua)
+```
 
-    humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-        if humanoid.WalkSpeed > 25 then
-            if SecurityEvent then
-                SecurityEvent:FireServer("ReportTamper", "Alteração de WalkSpeed detectada no cliente")
-            end
-        end
-    end)
-end
+## História
 
-if LocalPlayer.Character then
-    monitorCharacter(LocalPlayer.Character)
-end
-
-LocalPlayer.CharacterAdded:Connect(monitorCharacter)
-
-⚙️ Regras do Sistema de Punição
-| Infração | Ação Aplicada | Notificação ao Jogador | Efeito no DataStore |
-|---|---|---|---|
-| 1ª Infração | Kick do Servidor | Aviso 1/3 na tela e no motivo de desconexão | KickCount = 1 |
-| 2ª Infração | Kick do Servidor | Aviso 2/3 na tela e no motivo de desconexão | KickCount = 2 |
-| 3ª Infração | Kick do Servidor | Aviso 3/3 (Último Aviso) | KickCount = 3 |
-| 4ª Infração | BAN PERMANENTE | Notificação de Banimento e Desconexão Imediata | IsBanned = true |
-❓ Perguntas Frequentes (FAQ)
-1. Se o jogador usar um executor e deletar o ClientMonitor, o que acontece?
-O servidor continua monitorando os atributos físicos do personagem. Se o jogador tentar alterar a velocidade ou comandos no servidor sem o script local, o AntiCheatManager do servidor detectará a alteração diretamente e aplicará a punição da mesma forma.
-2. Como posso desbanir um jogador para testes?
-Para desbanir um jogador durante o desenvolvimento, execute o seguinte comando no Command Bar do Roblox Studio (substituindo o UserId):
-game:GetService("DataStoreService"):GetDataStore("SecurityPunishments_v1"):SetAsync("Player_SEU_USERID_AQUI", { KickCount = 0, IsBanned = false })
-print("Jogador desbanido com sucesso!")
-
-"""
-with open("README.md", "w", encoding="utf-8") as f:
-f.write(readme_content)
-print("Ficheiro README.md criado com sucesso!")
-O seu arquivo Markdown está pronto
-[file-tag: code-generated-file-0-1785961265049707650]
+Dante Moraes volta a Porto Aurora depois de 6 anos e descobre que a mãe
+deixou uma dívida com Dona Lurdes — e que o Inspetor Braga vende a cidade
+pedaço por pedaço para os Corvos do Cais. 10 missões conduzem a história
+até o farol.
 
 ---
+Projeto entregue como código executável: 69 arquivos-fonte (~12,5 mil linhas),
+`--selftest` com 33 verificações e smoke test headless de 42s com screenshots
+(compilação validada com JDK 17/25; rode `./run.sh`).
 
-### O que está incluído no arquivo `README.md`:
-
-1. **Explicação Detalhada do Travamento (O que aconteceu):**
-   * **Armadilha Anti-Tamper do Adonis:** O Adonis possui verificações internas no cliente. Quando um *bypass* tenta hookar ou modificar suas variáveis na memória, o Adonis executa um *loop* infinito de segurança (`while true do end`), travando a thread do Roblox e congelando a tela.
-   * **Sobrecarga da VM (Luraph):** O script de *bypass* roda sob uma Máquina Virtual em Lua que, ao tentar interceptar rotinas sem chamadas de espera (`task.wait()`), consome 100% da CPU do cliente.
-   * **Desincronização com o Servidor (*Server Desync*):** Mesmo que o cliente consiga desativar o script localmente, o servidor continua exigindo pacotes de validação e desativa a interatividade.
-
-2. **A Solução Defensiva ("A Cura"):**
-   * Apresentação da arquitetura **Server-Side Authority**, onde o servidor é a única fonte da verdade e ignora qualquer alteração feita na memória do cliente.
-
-3. **Guia Passo a Passo de Instalação no Roblox Studio:**
-   * Ativação de **API Services / DataStore** nas configurações do jogo (`Game Settings -> Security`).
-   * Estrutura de pastas e arquivos no Roblox Studio.
-   * Código completo e comentado do **`ServerScriptService/AntiCheatManager.lua`** (Servidor).
-   * Código completo do **`StarterPlayerScripts/ClientMonitor.lua`** (Cliente).
-
-4. **Sistema de Punição Progressiva Persistente:**
-   * **1ª à 3ª Infração:** Exibição de notificação no cliente, salvamento no DataStore e `Kick` indicando o número do aviso (`1/3`, `2/3`, `3/3`).
-   * **4ª Infração:** **Banimento Permanente** gravado no banco de dados do Roblox, impedindo que o jogador volte a entrar no servidor.
-
-5. **FAQ e Comando de Desbanimento:**
-   * Código pronto para rodar no *Command Bar* do Roblox Studio caso precise desbanir uma conta durante os testes.
-
+Para CI no GitHub Actions, copie `ci/ci.yml` para `.github/workflows/`.
